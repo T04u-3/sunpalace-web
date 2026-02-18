@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>ホール音響シミュレーター</title>
 <link rel="icon" href="favicon.png">
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
 
 <style>
 body{
@@ -108,6 +109,10 @@ canvas{
 </div>
 
 <script>
+const { createFFmpeg, fetchFile } = FFmpeg;
+const ffmpeg = createFFmpeg({ log: false });
+let ffmpegLoaded = false;
+
 let audioCtx = new AudioContext();
 let convolver = audioCtx.createConvolver();
 let analyser = audioCtx.createAnalyser();
@@ -254,6 +259,7 @@ function drawWave(){
 
 </body>
 </html>
+
 
 
 
