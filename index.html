@@ -135,18 +135,59 @@ const drop = document.getElementById("drop");
 const filenameText = document.getElementById("filename");
 const fileInput = document.getElementById("fileInput");
 
-function loadFile(file){
+async function loadFile(file){
   if(!file) return;
 
-  filenameText.textContent = file.name;
+  filenameText.textContent = "読み込み中…";
 
-  const reader = new FileReader();
-  reader.onload = function(ev){
-    audioCtx.decodeAudioData(ev.target.result, decoded=>{
-      buffer = decoded;
-    });
-  };
-  reader.readAsArrayBuffer(file);
+  /* ===== FFmpeg初回ロード ===== */
+  if(!ffmpegLoaded){
+    await ffmpeg.load();
+    ffmpegLoaded = true;
+  }
+
+  const name = file.name.toLowerCase();
+
+  /* ===== 動画か音声か判定 ===== */
+  const isVideo = name.match(/\.(mp4|mov|avi|mkv|webm)$/);
+
+  let inputName = "input";
+  let outputName = "output.wav";
+
+  ffmpeg.FS("writeFile", inputName, await fetchFile(file));
+
+  /* ===== 動画なら音声抽出 ===== */
+  if(isVideo){
+    await ffmpeg.run(
+      "-i", inputName,
+      "-vn",
+      "-ac", "2",
+      "-ar", "44100",
+      outputName
+    );
+  }else{
+    /* 音声ならフォーマット統一 */
+    await ffmpeg.run(
+      "-i", inputName,
+      "-ac", "2",
+      "-ar", "44100",
+      outputName
+    );
+  }
+
+  /* ===== 音量統一（ホール基準） ===== */
+  await ffmpeg.run(
+    "-i", outputName,
+    "-af", "loudnorm=I=-19:TP=-1.5:LRA=11",
+    "final.wav"
+  );
+
+  const data = ffmpeg.FS("readFile", "final.wav");
+
+  audioCtx.decodeAudioData(data.buffer, decoded=>{
+    buffer = decoded;
+    filenameText.textContent = file.name;
+  });
 }
 
 drop.addEventListener("dragover", e=>{
@@ -259,6 +300,7 @@ function drawWave(){
 
 </body>
 </html>
+
 
 
 
