@@ -157,7 +157,7 @@ async function loadFile(file){
       videoSource = audioCtx.createMediaElementSource(videoElement);
 
       const gain = audioCtx.createGain();
-      gain.gain.value = 0.7; // 音量統一
+      gain.gain.value = 1.0; // 音量統一
 
       videoSource.connect(gain);
       gain.connect(convolver);
@@ -219,7 +219,7 @@ document.getElementById("play").onclick = async ()=>{
   source.buffer = buffer;
 
   const gain = audioCtx.createGain();
-  gain.gain.value = 0.7;
+  gain.gain.value = 1.0;
 
   source.connect(gain);
   gain.connect(convolver);
@@ -307,3 +307,4 @@ function drawWave(){
 
 </body>
 </html>
+
