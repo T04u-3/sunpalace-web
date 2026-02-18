@@ -192,20 +192,21 @@ async function loadFile(file){
 
 drop.addEventListener("dragover", e=>{
   e.preventDefault();
+  e.stopPropagation();
   drop.classList.add("active");
 });
 
 drop.addEventListener("dragleave", ()=> drop.classList.remove("active"));
 
-drop.addEventListener("drop", e=>{
+drop.addEventListener("drop", async e=>{
   e.preventDefault();
-  loadFile(e.dataTransfer.files[0]);
+  await loadFile(e.dataTransfer.files[0]);
 });
 
 drop.addEventListener("click", ()=> fileInput.click());
 
-fileInput.addEventListener("change", ()=>{
-  loadFile(fileInput.files[0]);
+fileInput.addEventListener("change", async ()=>{
+  await loadFile(fileInput.files[0]);
 });
 
 document.getElementById("play").onclick = async ()=>{
@@ -300,6 +301,7 @@ function drawWave(){
 
 </body>
 </html>
+
 
 
 
