@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>ホール音響シミュレーター</title>
 <link rel="icon" href="favicon.png">
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
 
 <style>
 body{
@@ -63,7 +62,7 @@ h1{
 
 .controls button:hover{ background:#444; }
 
-/* 波形コンテナ（完全透明） */
+/* 波形 */
 #waveContainer{
   position:fixed;
   bottom:0;
@@ -109,23 +108,19 @@ canvas{
 </div>
 
 <script>
-if(typeof FFmpeg === "undefined"){
-  alert("FFmpegの読み込みに失敗しました。ページを再読み込みしてください。");
-}
-
-const { createFFmpeg, fetchFile } = FFmpeg;
-const ffmpeg = createFFmpeg({ log: false });
-let ffmpegLoaded = false;
-
+/* ===== WebAudio ===== */
 let audioCtx = new AudioContext();
 let convolver = audioCtx.createConvolver();
 let analyser = audioCtx.createAnalyser();
 
 let source = null;
 let buffer = null;
+let videoElement = null;
+let videoSource = null;
 
-analyser.fftSize = 256; // 棒の数
+analyser.fftSize = 256;
 
+/* ===== ホールIR ===== */
 fetch("fukuoka_sunpalace_2F_center_PRO_FINAL.wav")
 .then(r=>r.arrayBuffer())
 .then(data=>audioCtx.decodeAudioData(data))
@@ -135,68 +130,58 @@ fetch("fukuoka_sunpalace_2F_center_PRO_FINAL.wav")
   analyser.connect(audioCtx.destination);
 });
 
+/* ===== UI ===== */
 const drop = document.getElementById("drop");
 const filenameText = document.getElementById("filename");
 const fileInput = document.getElementById("fileInput");
 
+/* ===== ファイル読み込み ===== */
 async function loadFile(file){
   if(!file) return;
 
-  filenameText.textContent = "読み込み中…";
+  filenameText.textContent = file.name;
 
-  /* ===== FFmpeg初回ロード ===== */
-  if(!ffmpegLoaded){
-    await ffmpeg.load();
-    ffmpegLoaded = true;
-  }
-
+  const url = URL.createObjectURL(file);
   const name = file.name.toLowerCase();
-
-  /* ===== 動画か音声か判定 ===== */
   const isVideo = name.match(/\.(mp4|mov|avi|mkv|webm)$/);
 
-  let inputName = "input";
-  let outputName = "output.wav";
-
-  ffmpeg.FS("writeFile", inputName, await fetchFile(file));
-
-  /* ===== 動画なら音声抽出 ===== */
+  /* ===== 動画 ===== */
   if(isVideo){
-    await ffmpeg.run(
-      "-i", inputName,
-      "-vn",
-      "-ac", "2",
-      "-ar", "44100",
-      outputName
-    );
+    videoElement = document.createElement("video");
+    videoElement.src = url;
+    videoElement.crossOrigin = "anonymous";
+
+    videoElement.onloadeddata = ()=>{
+      if(videoSource) videoSource.disconnect();
+
+      videoSource = audioCtx.createMediaElementSource(videoElement);
+
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.7; // 音量統一
+
+      videoSource.connect(gain);
+      gain.connect(convolver);
+    };
+
+    buffer = null;
+
   }else{
-    /* 音声ならフォーマット統一 */
-    await ffmpeg.run(
-      "-i", inputName,
-      "-ac", "2",
-      "-ar", "44100",
-      outputName
-    );
+    /* ===== 音声 ===== */
+    const reader = new FileReader();
+
+    reader.onload = function(ev){
+      audioCtx.decodeAudioData(ev.target.result, decoded=>{
+        buffer = decoded;
+      });
+    };
+
+    reader.readAsArrayBuffer(file);
   }
-
-  /* ===== 音量統一（ホール基準） ===== */
-  await ffmpeg.run(
-    "-i", outputName,
-    "-af", "loudnorm=I=-19:TP=-1.5:LRA=11",
-    "final.wav"
-  );
-
-  const data = ffmpeg.FS("readFile", "final.wav");
-
-  audioCtx.decodeAudioData(data.buffer, decoded=>{
-    buffer = decoded;
-    filenameText.textContent = file.name;
-  });
 }
 
+/* ===== ドラッグ ===== */
 drop.addEventListener("dragover", e=>{
   e.preventDefault();
-  e.stopPropagation();
   drop.classList.add("active");
 });
 
@@ -204,38 +189,62 @@ drop.addEventListener("dragleave", ()=> drop.classList.remove("active"));
 
 drop.addEventListener("drop", async e=>{
   e.preventDefault();
-  await loadFile(e.dataTransfer.files[0]);
+  loadFile(e.dataTransfer.files[0]);
 });
 
+/* ===== クリック ===== */
 drop.addEventListener("click", ()=> fileInput.click());
 
-fileInput.addEventListener("change", async ()=>{
-  await loadFile(fileInput.files[0]);
+fileInput.addEventListener("change", ()=>{
+  loadFile(fileInput.files[0]);
 });
 
+/* ===== 再生 ===== */
 document.getElementById("play").onclick = async ()=>{
-  if(!buffer) return;
-
   await audioCtx.resume();
+
+  /* 動画 */
+  if(videoElement){
+    videoElement.play();
+    drawWave();
+    return;
+  }
+
+  /* 音声 */
+  if(!buffer) return;
 
   if(source) source.stop();
 
   source = audioCtx.createBufferSource();
   source.buffer = buffer;
-  source.connect(convolver);
+
+  const gain = audioCtx.createGain();
+  gain.gain.value = 0.7;
+
+  source.connect(gain);
+  gain.connect(convolver);
+
   source.start();
 
   drawWave();
 };
 
-document.getElementById("pause").onclick = ()=> audioCtx.suspend();
-
-document.getElementById("stop").onclick = ()=>{
-  if(source) source.stop();
+/* ===== 一時停止 ===== */
+document.getElementById("pause").onclick = ()=>{
+  audioCtx.suspend();
+  if(videoElement) videoElement.pause();
 };
 
+/* ===== 停止 ===== */
+document.getElementById("stop").onclick = ()=>{
+  if(source) source.stop();
+  if(videoElement) videoElement.pause();
+};
+
+/* ===== リセット ===== */
 document.getElementById("reset").onclick = ()=>{
   buffer = null;
+  videoElement = null;
   filenameText.textContent = "ファイル未選択";
   if(source) source.stop();
 };
@@ -257,22 +266,15 @@ function drawWave(){
 
   function loop(){
     analyser.getByteFrequencyData(data);
-
-    // 完全透明クリア（黒を出さない）
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
     const barWidth = canvas.width / bufferLength * 1.5;
     let x = 0;
 
     for(let i=0;i<bufferLength;i++){
-      let value = data[i] / 255;
-
-      // 音の変化を強調
-      value = Math.pow(value, 0.6);
-
+      let value = Math.pow(data[i]/255,0.6);
       const barHeight = value * canvas.height;
 
-      // 半透明グラデーション
       const gradient = ctx.createLinearGradient(
         0,
         canvas.height - barHeight,
@@ -305,11 +307,3 @@ function drawWave(){
 
 </body>
 </html>
-
-
-
-
-
-
-
-
