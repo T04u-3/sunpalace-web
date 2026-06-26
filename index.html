@@ -121,7 +121,7 @@ let videoSource = null;
 analyser.fftSize = 256;
 
 /* ===== ホールIR ===== */
-fetch("fukuoka_sunpalace_2F_center_PRO_FINAL.wav")
+fetch("fukuoka_sunpalace_ir_1.65s.wav")
 .then(r=>r.arrayBuffer())
 .then(data=>audioCtx.decodeAudioData(data))
 .then(ir=>{
